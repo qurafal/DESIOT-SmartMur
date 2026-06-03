@@ -1,67 +1,54 @@
-# Sistem Pemantauan dan Otomasi Jemuran Pintar Berbasis IoT dan AI
+Repositori ini memuat konfigurasi dan skrip operasional untuk Raspberry Pi yang diimplementasikan sebagai *gateway* komunikasi dalam proyek rekayasa *Internet of Things* (IoT) di lingkungan akademik Teknik Komputer Universitas Indonesia. Perangkat ini beroperasi pada lapisan tengah (*middleware*), menghubungkan simpul sensor lokal dengan peladen awan dan mesin orkestrasi pusat.
 
-Proyek ini merupakan implementasi sistem Internet of Things (IoT) terdistribusi yang dirancang untuk memantau kondisi lingkungan penjemuran pakaian dan memberikan perlindungan mekanis secara otomatis terhadap perubahan cuaca (hujan). Sistem ini mengintegrasikan mikrokontroler, protokol pesan ringan (MQTT), otomasi berbasis aturan (rule-based), serta analisis prediktif menggunakan kecerdasan buatan (LLM).
+## 1. Peran dan Fungsi Teknis
 
-## 1. Gambaran Umum (Overview)
-
-Sistem ini menyelesaikan masalah efisiensi penjemuran dengan menyediakan fitur utama:
-* Akuisisi Data Real-Time: Membaca suhu, kelembapan, intensitas cahaya, curah hujan, dan berat beban jemuran.
-* Otomasi Proteksi Atap: Menutup atap pelindung secara instan ketika sensor mendeteksi intensitas hujan di atas ambang batas.
-* Analisis AI Prediktif: Menggunakan Gemini API untuk mengalkulasi estimasi waktu pengeringan pakaian berdasarkan korelasi variabel cuaca dan penurunan berat.
-* Notifikasi dan Interaksi: Menyediakan antarmuka bot Telegram untuk pelaporan status dan dasbor Metabase untuk pemantauan tren historis.
+Raspberry Pi dalam topologi sistem ini menjalankan dua peran infrastruktur yang krusial:
+* **MQTT Broker Lokal:** Menjalankan layanan *daemon* Mosquitto untuk menampung publikasi data sensor berfrekuensi tinggi dari ESP32 dan mendistribusikan perintah kendali ke aktuator.
+* **Simpul Jaringan Privat (VPN Node):** Terhubung ke dalam *mesh network* Netbird dengan alamat IP statis `100.117.143.2`. Konfigurasi ini menjamin peladen (Virtual Machine) dan mesin n8n (Laptop) dapat melakukan *subscribe* ke topik MQTT secara aman dari luar jaringan lokal (NAT) tanpa memerlukan konfigurasi *port forwarding*.
 
 ---
 
-## 2. Arsitektur Infrastruktur (Laporan Teknis)
+## 2. Struktur Berkas
+```text
+Raspi-Broker/
+└── main.py         # Skrip Python utama penanganan lalu lintas MQTT lokal
+```
+---
 
-Proyek ini mengadopsi arsitektur tiga lapis (Edge, Gateway, Server) yang saling terhubung melalui jaringan lokal dan Virtual Private Network (Netbird).
+## 3. Prasyarat Sistem dan Dependensi
 
-| Komponen | Lapisan | Peran dan Fungsi Teknis |
-| :--- | :--- | :--- |
-| ESP32 | Edge Device | Membaca data dari 5 sensor fisik dan menggerakkan aktuator motor servo. Berkomunikasi via MQTT lokal. |
-| Raspberry Pi | Gateway | Menjalankan Mosquitto Broker sebagai pusat lalu lintas pesan MQTT (Topik: sensor/cuaca & sensor/control). |
-| Skrip Python (VM) | Application Server | Menjalankan multi-threading untuk pemrosesan AI (Gemini), pengunggahan data ke Supabase, dan long-polling bot Telegram. |
-| n8n Engine | Orchestration | Berjalan di Docker (Laptop) untuk mengeksekusi logika kondisional buka/tutup atap guna mencegah spam perintah servo. |
-| Supabase | Database (Cloud) | DBMS terpusat untuk menyimpan tabel log sensor mentah dan hasil kalkulasi prediksi LLM. |
-| Metabase | Analytics | Berjalan di Docker (Laptop) sebagai dasbor visual untuk memantau indikator performa dan grafik tren penurunan berat air. |
+Sebelum menjalankan skrip fungsional, pastikan sistem operasi Raspberry Pi telah terpasang paket infrastruktur dasar berikut:
+
+### A. Instalasi Mosquitto Broker
+Layanan inti MQTT harus diaktifkan terlebih dahulu di level sistem operasi pada port standar `1883`:
+```bash
+sudo apt update
+sudo apt install mosquitto mosquitto-clients
+sudo systemctl enable mosquitto
+sudo systemctl start mosquitto
+```
+
+### B. Instalasi Library Python
+Skrip pengelola pesan ini menggunakan **Python 3**. Instal Library klien MQTT melalui *package manager* bawaan Python:
+```bash
+pip install paho-mqtt
+```
 
 ---
 
-## 3. Skema Basis Data (Supabase)
+## 4. Panduan Eksekusi Skrip
 
-Proyek ini menggunakan basis data relasional di Supabase dengan dua tabel utama:
+1. Akses terminal Raspberry Pi Anda (melalui SSH atau secara langsung), lalu masuk ke folder
 
-1. log_jemuran: 
-   Menyimpan data mentah periodik dari perangkat. Kolom yang digunakan: id, waktu (timestamptz), suhu (float), kelembapan (float), cahaya (integer), intensitas_hujan (integer), dan berat (integer).
-2. ai_prediksi_jemuran: 
-   Menyimpan hasil inferensi dari Gemini AI. Kolom yang digunakan: id, waktu_prediksi (timestamptz), log_id_referensi (Foreign Key), status_jemuran (teks), estimasi_menit (integer), dan alasan (teks).
-
----
-
-## 4. Panduan Memulai (Deployment)
-
-Berkas konfigurasi spesifik untuk ESP32, Raspberry Pi, dan Skrip VM terdapat pada direktori masing-masing beserta panduan instalasinya.
-
-Untuk menjalankan layanan infrastruktur lokal (n8n dan Metabase) di laptop, pastikan Docker sudah terpasang dan jalankan perintah berikut di terminal:
-
-### A. Menjalankan n8n Engine
-Perintah ini menggunakan Named Volume (n8n_data) agar konfigurasi workflow tidak hilang saat kontainer dihentikan.
-
-docker run -d --name n8n -p 5678:5678 -v n8n_data:/home/node/.n8n n8nio/n8n:latest
-
-
-### B. Menjalankan Metabase (Mode Aman RAM)
-Perintah ini membatasi penggunaan memori kontainer maksimal 512 MB untuk mencegah terjadinya kebocoran memori (Out of Memory / Black Screen) pada sistem host.
-
-docker run -d --name metabase -p 3000:3000 -m 512m -e "JAVA_OPTS=-Xmx350m -Xms150m" -v metabase_data:/metabase.db metabase/metabase:latest
-
+2. **Jalankan Script:**
+   Jalankan skrip secara langsung untuk memantau lalu lintas pesan masuk dan keluar secara *real-time*:
+```bash
+   python3 main.py
+   ```
 
 ---
 
-## 5. Keamanan dan Kredensial
+## 5. Pemetaan Topik MQTT
 
-Repositori ini tidak menyertakan kunci API produksi. Sebelum menjalankan skrip Python pada VM, Anda wajib membuat berkas .env yang merujuk pada format .env.example dan mengisi variabel berikut:
-* TELEGRAM_TOKEN
-* GEMINI_API_KEY
-* SUPABASE_URL
-* SUPABASE_SERVICE_ROLE_KEY
+Sebagai pusat pertukaran data, broker ini memfasilitasi lalu lintas pesan pada dua topik utama:
+* **Topik `sensor/cuaca` (Ingress):** Menerima *payload* JSON berisi parameter lingkungan (suhu, kelembapan, intensitas hujan, cahaya, dan massa pakaian) dari ESP32 setiap 3 detik. Data ini kemudian diserap oleh Virtual Machine.

@@ -1,43 +1,46 @@
-# Simpul Sensor dan Aktuator (ESP32)
-
-Folder ini berisi kode sumber C++ untuk mikrokontroler ESP32. Perangkat ini bertindak sebagai *edge device* yang bertugas mengakuisisi data lingkungan secara fisik dan menggerakkan mekanisme atap jemuran otomatis.
+Repositori ini memuat kode sumber C++ mikrokontroler ESP32 yang dikembangkan untuk rekayasa sistem *Internet of Things* (IoT) terdistribusi di lingkungan akademik Teknik Komputer Universitas Indonesia. Perangkat ini beroperasi pada lapisan *edge*, bertugas mengakuisisi data lingkungan secara fisik dan menggerakkan mekanisme aktuator atap jemuran otomatis.
 
 ## 1. Konfigurasi Perangkat Keras (Pinout)
 
-Berdasarkan pengaturan variabel pada berkas utama, berikut adalah pemetaan pin GPIO ESP32 yang harus dihubungkan ke masing-masing modul sensor dan aktuator:
-* **Sensor Suhu dan Kelembapan (DHT11):** Terhubung ke GPIO 15.
-* **Sensor Berat (Modul HX711):** Pin Data (DT) terhubung ke GPIO 16, dan Pin Clock (SCK) terhubung ke GPIO 17.
-* **Sensor Cahaya (LDR):** Terhubung ke pin analog GPIO 4.
-* **Sensor Hujan:** Terhubung ke pin analog GPIO 5.
-* **Aktuator Motor Servo (MG90S):** Terhubung ke GPIO 18 untuk menerima sinyal PWM 50Hz.
+Sistem ini membutuhkan penyambungan pin GPIO ESP32 ke berbagai modul sensor dan aktuator fisik. Berikut adalah pemetaan perangkat keras berdasarkan kode utama:
+
+* **Sensor Suhu dan Kelembapan (DHT11):** Pin Data terhubung ke **GPIO 15**.
+* **Sensor Berat (Modul HX711):** Pin Data (DT) terhubung ke **GPIO 16**, dan Pin Clock (SCK) terhubung ke **GPIO 17**.
+* **Sensor Cahaya (LDR):** Terhubung ke pin analog **GPIO 4**.
+* **Sensor Hujan:** Terhubung ke pin analog **GPIO 5**.
+* **Motor Servo (MG90S/Setara):** Terhubung ke **GPIO 18** (dikendalikan via sinyal PWM perangkat keras pada frekuensi 50Hz).
 
 ## 2. Dependensi Pustaka (Libraries)
 
-Untuk melakukan kompilasi kode ini (menggunakan Arduino IDE atau PlatformIO), pastikan pustaka pihak ketiga berikut telah terpasang pada lingkungan pengembangan Anda:
-* `WiFi.h`: Pustaka bawaan core ESP32.
-* `PubSubClient.h`: Mengelola koneksi klien MQTT.
-* `ESP32Servo.h`: Mengontrol rotasi servo secara presisi menggunakan timer perangkat keras ESP32.
-* `HX711.h`: Membaca modul penguat sinyal load cell.
-* `DHT.h`: Menguraikan data dari sensor suhu dan kelembapan DHT11.
+Sebelum melakukan kompilasi (*compile*) menggunakan Arduino IDE atau PlatformIO, pastikan Anda telah memasang pustaka eksternal berikut:
+
+* `WiFi.h`: Pustaka bawaan core ESP32 untuk konektivitas jaringan.
+* `PubSubClient.h`: Klien MQTT ringan untuk pengiriman dan penerimaan pesan.
+* `ESP32Servo.h`: Pengendali motor servo yang dialokasikan khusus untuk *timer* perangkat keras ESP32.
+* `HX711.h`: Pustaka pembacaan modul penguat sinyal *load cell*.
+* `DHT.h`: Pustaka antarmuka untuk sensor suhu dan kelembapan lingkungan.
 
 ## 3. Konfigurasi Jaringan dan Broker
 
-Sebelum melakukan pengunggahan (*flashing*) kode ke mikrokontroler ESP32, Anda wajib menyesuaikan konstanta jaringan pada bagian atas skrip agar perangkat dapat terhubung ke rute lokal:
+Skrip ini memerlukan penyesuaian parameter jaringan sebelum diunggah (*flashing*) ke dalam papan ESP32. Ubah variabel berikut pada bagian atas berkas kode sumber agar sesuai dengan topologi jaringan lokal Anda:
 
 ```cpp
-const char* ssid = "LOCK_IN";             // Sesuaikan dengan SSID WiFi lokal
-const char* password = "yasayasetuju";    // Sesuaikan dengan kata sandi WiFi
-const char* mqtt_server = "192.168.1.35"; // Pastikan IP ini sesuai dengan alamat statis Raspberry Pi saat ini
-const int mqtt_port = 1883;
+const char* ssid = "SSID_ANDA";             // SSID WiFi lokal
+const char* password = "PASS_ANDA";    // Kata sandi WiFi lokal
+const char* mqtt_server = "IP_RASPBERRY_PI"; // Alamat IP statis Raspberry Pi (Broker)
+const int mqtt_port = 1883;               // Port standar Mosquitto MQTT
 ```
 
-## 4. Spesifikasi Komunikasi MQTT
+## 4. Arsitektur Komunikasi MQTT
 
-ESP32 ini berinteraksi dengan broker lokal menggunakan mekanisme penerbitan (*publish*) dan langganan (*subscribe*) pada dua topik berikut:
+Perangkat ini terhubung dengan broker MQTT secara terus-menerus (*keep-alive*) dan menangani dua alur pertukaran data utama:
 
-### A. Pengiriman Data (Topik: `sensor/cuaca`)
-ESP32 melakukan pembacaan seluruh sensor dan mengirimkan paket data JSON setiap 3 detik (3000 milidetik) ke broker. 
-Struktur *payload* JSON yang dikirimkan:
+### A. Pengiriman Data Telemetri (Publish)
+* **Topik:** `sensor/cuaca`
+* **Interval:** Setiap 3.000 milidetik (3 detik).
+* **Fungsi:** Mengirimkan *payload* berformat JSON yang memuat seluruh nilai bacaan sensor secara terkini beserta status bukaan mekanis atap.
+
+**Struktur Payload JSON:**
 ```json
 {
   "suhu": 25.3,
@@ -50,8 +53,16 @@ Struktur *payload* JSON yang dikirimkan:
 }
 ```
 
-### B. Penerimaan Perintah (Topik: `sensor/control`)
-Setelah berhasil terhubung, perangkat akan mendengarkan perintah kendali dari mesin otomasi pusat (n8n). 
-Instruksi yang dieksekusi:
-* `buka`: Menggerakkan servo ke posisi 0 derajat (menarik atap pelindung).
-* `tutup`: Menggerakkan servo ke posisi 180 derajat (menutup atap pelindung).
+### B. Penerimaan Perintah Kendali (Subscribe)
+* **Topik:** `sensor/control`
+* **Fungsi:** Mendengarkan instruksi *string* mentah dari sistem orkestrasi pusat (n8n) untuk menggerakkan aktuator pelindung jemuran.
+* **Parameter yang Diterima:**
+  * `buka`: Memutar servo ke sudut 0° (menarik atap pelindung, jemuran terbuka).
+  * `tutup`: Memutar servo ke sudut 180° (mendorong atap pelindung, jemuran terlindungi).
+
+## 5. Instruksi Instalasi dan Flashing
+
+1. Buka berkas utama kode C++ menggunakan IDE pilihan Anda.
+2. Pastikan pengaturan *Board* diatur ke modul ESP32 yang sesuai (misalnya: `DOIT ESP32 DEVKIT V1`).
+3. Sesuaikan konstanta kalibrasi pada variabel `calibration_factor` agar bacaan massa *load cell* akurat dalam satuan kilogram.
+4. Hubungkan ESP32 ke komputer, pilih *port* serial yang tepat, lalu klik **Upload**.
