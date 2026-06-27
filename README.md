@@ -1,6 +1,8 @@
 # Sistem Pemantauan dan Otomasi Jemuran Pintar Berbasis IoT dan AI
 
-**Video Presentasi Tugas**: [Tonton di YouTube](https://youtu.be/jNlBGO228oM)
+**Video Presentasi Tugas**: 
+
+[![Video Presentasi Tugas](https://img.youtube.com/vi/jNlBGO228oM/0.jpg)](https://youtu.be/jNlBGO228oM)
 
 Repositori ini memuat seluruh aset kode sumber, konfigurasi infrastruktur, dan dokumentasi rekayasa untuk proyek *Internet of Things* (IoT) terdistribusi yang dikembangkan di lingkungan akademik Teknik Komputer Universitas Indonesia. Sistem ini dirancang untuk memantau kondisi lingkungan penjemuran pakaian dan memberikan perlindungan mekanis secara otomatis terhadap perubahan cuaca presipitasi (hujan), dengan mengintegrasikan mikrokontroler, protokol ringan MQTT, mesin otomasi, dan analisis kecerdasan buatan.
 
